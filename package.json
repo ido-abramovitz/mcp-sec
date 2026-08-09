@@ -1,0 +1,35 @@
+{
+  "name": "mcp-sec",
+  "version": "0.0.1",
+  "description": "Canary-proof security checks for MCP servers -- verifies real behavior instead of pattern-matching code.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": {
+    "mcp-sec": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev": "node --experimental-strip-types src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ido-abramovitz/mcp-sec.git"
+  },
+  "keywords": [
+    "mcp",
+    "security",
+    "model-context-protocol",
+    "vulnerability-scanner"
+  ]
+}
