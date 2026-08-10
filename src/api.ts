@@ -2,7 +2,7 @@
 // lives. This file has no scanning logic in it at all; it's the entire
 // surface area where this package touches the network.
 
-const API_BASE = process.env.MCP_SEC_API_URL || 'https://api.mcp-sec.dev';
+const API_BASE = process.env.MCP_SEC_API_URL || 'https://api.mcpsecurity.cloud';
 
 export interface CheckResult {
   name: string;

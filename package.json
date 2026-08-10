@@ -1,5 +1,5 @@
 {
-  "name": "mcp-sec",
+  "name": "mcp-sec-cli",
   "version": "0.0.1",
   "description": "Canary-proof security checks for MCP servers -- verifies real behavior instead of pattern-matching code.",
   "type": "module",

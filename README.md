@@ -25,20 +25,30 @@ silent update doesn't slip past unnoticed -- running this command asks
 "is what's actually installed right now known safe?" rather than scanning
 your machine itself.
 
-**Status: early scaffold, not yet published or functional.** See the
-milestone list below.
-
 ## Install
 
-Not yet published to npm.
+```bash
+npx mcp-sec-cli check <name>@<version>
+```
+
+No install needed for one-off use. For repeated use:
+
+```bash
+npm install -g mcp-sec-cli
+```
 
 ## Usage
 
 ```bash
-npx mcp-sec check <name>@<version>
+mcp-sec check <name>@<version>
 ```
 
-(Not yet implemented -- this is a build-in-progress scaffold.)
+Run with no arguments from a project directory to scan every MCP server
+found in local config files (Claude Desktop, Cursor, `.mcp.json`, etc.):
+
+```bash
+mcp-sec
+```
 
 ## License
 
