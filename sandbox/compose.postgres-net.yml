@@ -1,0 +1,94 @@
+# Sandbox profile for genai-toolbox (Google's mcp-toolbox for databases):
+# its tools are meaningless without a real database backend to execute
+# against -- same rationale as compose.qdrant-net.yml. The postgres
+# container is a real, official postgres image (OUR OWN trusted
+# infrastructure, not the untrusted target), seeded via target/init.sql
+# with the exact schema from the vendor's own quickstart docs.
+#
+# Used together with red-engine.ts's --force-profile flag: every check
+# needs this profile since all of genai-toolbox's tools need real
+# Postgres reachability regardless of which vulnerability class is being
+# tested. This means SSRF/DNS-rebinding checks (normally canary-net's
+# job) ALSO need their oracle present here -- canary-listener is included
+# for that reason; without it, forcing every check onto this profile
+# would silently make ssrf's "clean" results meaningless (a DNS-lookup
+# failure looks identical to "target correctly blocked it").
+#
+# cgnat-net is a SECOND, additional network (100.64.55.0/24, the RFC 6598
+# CGNAT shared address space) -- both target and canary-listener are
+# dual-homed onto it, giving the listener a second, real, routable
+# address inside a range genai-toolbox's own SSRF guard explicitly
+# special-cases as blocked (see internal/sources/http/http.go's
+# cgnatRange). Lets a check variant test that block empirically (reach a
+# literal 100.64.x.x address) instead of just trusting the source read.
+
+services:
+  target:
+    build: .
+    volumes:
+      - ./target:/home/runner/target:ro
+      # Required for path_traversal's sentinel mechanism and
+      # command_injection's out-of-band dropHit channel to mean anything
+      # under this profile -- both check modules default to the
+      # airgapped profile, which mounts these; --force-profile overrides
+      # every check onto THIS profile instead, so without these mounts
+      # too, both checks would run with their oracle silently missing --
+      # every result "clean" for the wrong reason, not a real test. See
+      # docs/false-results.md for the real case this was caught on.
+      - ./sentinels:/home/runner/sentinels:ro
+      - ./drops:/home/runner/drops
+    tmpfs:
+      - /tmp:size=16m
+    networks:
+      - postgres-net
+      - cgnat-net
+    # Routes ALL of target's DNS resolution through canary-listener's
+    # dns-rebind server instead of Docker's default embedded resolver --
+    # needed for the ssrf check's 'dns-rebind' variant. It transparently
+    # forwards every other hostname (postgres, canary-listener, target
+    # itself) to Docker's real resolver, so this is a no-op for every
+    # other check/variant.
+    dns:
+      - 100.64.55.10
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:./seccomp-network.json
+    mem_limit: 256m
+    pids_limit: 128
+    cpus: 0.5
+    user: "10001:10001"
+    read_only: true
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres-root-password
+    volumes:
+      - ./target/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - postgres-net
+    # OUR OWN trusted infrastructure (the real, official Postgres image),
+    # not the untrusted target -- no lockdown needed. Ephemeral (no
+    # persistent volume) -- gone when the container stops.
+
+  canary-listener:
+    build: ./canary-listener
+    networks:
+      postgres-net: {}
+      cgnat-net:
+        ipv4_address: 100.64.55.10
+    volumes:
+      - ./canary-hits:/var/log/canary-hits
+    # Same trusted, un-hardened role as in compose.canary-net.yml -- its
+    # only job is to log inbound requests reliably from either network.
+
+networks:
+  postgres-net:
+    internal: true   # no route to the outside world -- the whole point
+  cgnat-net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 100.64.55.0/24

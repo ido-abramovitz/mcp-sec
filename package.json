@@ -7,16 +7,24 @@
   "bin": {
     "mcp-sec": "./dist/cli.js"
   },
+  "exports": {
+    ".": "./dist/cli.js",
+    "./runner": "./dist/runner/index.js"
+  },
   "files": [
-    "dist"
+    "dist",
+    "sandbox"
   ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "prepare": "npm run build",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "dev": "node --experimental-strip-types src/cli.ts"
+    "dev": "node --experimental-strip-types src/cli.ts",
+    "sandbox:build": "cd sandbox && docker compose -f compose.airgapped.yml build && docker compose -f compose.canary-net.yml build",
+    "sandbox:clean": "cd sandbox && docker compose -f compose.airgapped.yml down --remove-orphans && docker compose -f compose.canary-net.yml down --remove-orphans"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

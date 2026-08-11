@@ -1,0 +1,53 @@
+# Sandbox profile for checks where the canary IS a network event (SSRF,
+# exfiltration) rather than a file. Opposite shape from
+# compose.airgapped.yml: instead of no network at all, the target gets an
+# internal-only Docker network containing exactly one other reachable
+# thing -- a canary listener that logs any inbound request with its
+# token. A hit is the listener independently recording the token, same
+# doctrine as every other check, different oracle.
+#
+# Isolation guarantee here is ONE layer, not two: `internal: true` means
+# no route to the outside world (verified the same way airgapped's
+# network_mode: none was), but the target genuinely needs real
+# socket/connect syscalls to reach the listener, so seccomp-network.json
+# allows them -- the syscall layer can't also block egress here the way
+# it does for airgapped. Honest tradeoff, not an oversight. See
+# docs/SAFETY.md.
+#
+# Used by red-engine/sandbox-runner.ts, which starts canary-listener first
+# (detached) and tears it down after -- not meant to be run by hand
+# except for debugging.
+
+services:
+  target:
+    build: .
+    volumes:
+      - ./target:/home/runner/target:ro
+    tmpfs:
+      - /tmp:size=16m
+    networks:
+      - canary-net
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:./seccomp-network.json
+    mem_limit: 256m
+    pids_limit: 128
+    cpus: 0.5
+    user: "10001:10001"
+    read_only: true
+
+  canary-listener:
+    build: ./canary-listener
+    networks:
+      - canary-net
+    volumes:
+      - ./canary-hits:/var/log/canary-hits
+    # This is OUR OWN trusted code, not the untrusted target -- it
+    # doesn't need the target's lockdown (seccomp, read-only fs, dropped
+    # caps). Its only job is to log inbound requests reliably.
+
+networks:
+  canary-net:
+    internal: true   # no route to the outside world -- the whole point

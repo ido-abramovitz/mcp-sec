@@ -7,7 +7,7 @@
     "rootDir": "src",
     "lib": ["ES2022"],
     "strict": true,
-    "declaration": false,
+    "declaration": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,

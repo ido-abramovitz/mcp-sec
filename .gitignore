@@ -3,3 +3,17 @@ dist/
 .env
 *.log
 .DS_Store
+
+# sandbox/target/, sentinels/, drops/, canary-hits/ are populated per scan
+# run (the target's install, planted sentinels, out-of-band drop files,
+# and the canary-listener's request log) -- never checked in, but keep
+# each directory present via .gitkeep so a fresh checkout has the mount
+# points docker compose expects.
+sandbox/target/*
+!sandbox/target/.gitkeep
+sandbox/sentinels/*
+!sandbox/sentinels/.gitkeep
+sandbox/drops/*
+!sandbox/drops/.gitkeep
+sandbox/canary-hits/*
+!sandbox/canary-hits/.gitkeep

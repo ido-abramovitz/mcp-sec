@@ -1,0 +1,67 @@
+# Sandbox profile for genai-toolbox's MySQL prebuilt config. Same shape
+# as compose.postgres-net.yml -- see that file's header comment for why
+# canary-listener/cgnat-net/sentinels/drops are all included (every
+# check gets routed through this one profile via --force-profile, so
+# every check's own oracle needs to be present here, not just the ones
+# this specific backend's tools obviously need).
+#
+# The official mysql:8 image auto-creates the database/user from env
+# vars alone -- no custom init script needed (unlike Postgres, which
+# needed target/init.sql for the quickstart-shaped hotels table this
+# project doesn't use for MySQL).
+
+services:
+  target:
+    build: .
+    volumes:
+      - ./target:/home/runner/target:ro
+      - ./sentinels:/home/runner/sentinels:ro
+      - ./drops:/home/runner/drops
+    tmpfs:
+      - /tmp:size=16m
+    networks:
+      - mysql-net
+      - cgnat-net
+    dns:
+      - 100.64.55.10
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:./seccomp-network.json
+    mem_limit: 256m
+    pids_limit: 128
+    cpus: 0.5
+    user: "10001:10001"
+    read_only: true
+
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: mysql-root-password
+      MYSQL_DATABASE: toolbox_db
+      MYSQL_USER: toolbox_user
+      MYSQL_PASSWORD: my-password
+    networks:
+      - mysql-net
+    # OUR OWN trusted infrastructure (the real, official MySQL image),
+    # not the untrusted target -- no lockdown needed. Ephemeral (no
+    # persistent volume) -- gone when the container stops.
+
+  canary-listener:
+    build: ./canary-listener
+    networks:
+      mysql-net: {}
+      cgnat-net:
+        ipv4_address: 100.64.55.10
+    volumes:
+      - ./canary-hits:/var/log/canary-hits
+
+networks:
+  mysql-net:
+    internal: true
+  cgnat-net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 100.64.55.0/24
