@@ -52,13 +52,16 @@ export interface SessionStopCommand {
 export type RunnerCommand = SessionStartCommand | RpcCommand | OracleDropHitCommand | OracleListenerLogCommand | SessionStopCommand;
 
 // Plain `Omit<RunnerCommand, 'id'>` collapses a union down to its shared
-// properties instead of applying Omit to each member -- this distributes
-// it instead, so callers building "everything except id" for whichever
-// specific command they're sending still get full per-kind field
-// checking. Exported so both the backend (which sends commands) and any
-// other future caller share one correct definition instead of each
-// re-deriving it slightly differently.
-export type RunnerCommandInput = RunnerCommand extends infer C ? Omit<C, 'id'> : never;
+// properties instead of applying Omit to each member -- distribution only
+// happens when the checked type is a naked generic parameter of the
+// conditional type itself (not a concrete alias referenced from inside
+// one), so this needs its own generic helper rather than inlining
+// `RunnerCommand extends infer C ? ... : never` directly. Exported so both
+// the backend (which sends commands) and any other future caller share
+// one correct definition instead of each re-deriving it slightly
+// differently.
+type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never;
+export type RunnerCommandInput = DistributiveOmit<RunnerCommand, 'id'>;
 
 export interface RunnerReply {
   kind: 'reply';
