@@ -3,4 +3,4 @@ export { startTarget, startSupportServices, stopSupportServices, listenerLog, dr
 export type { Profile, McpClient } from './types.js';
 export { runWsRunner } from './ws-runner.js';
 export type { RunOptions } from './ws-runner.js';
-export type { RunnerCommand, RunnerReply, SessionStartCommand, RpcCommand, OracleDropHitCommand, OracleListenerLogCommand, SessionStopCommand } from './protocol.js';
+export type { RunnerCommand, RunnerCommandInput, RunnerReply, SessionStartCommand, RpcCommand, OracleDropHitCommand, OracleListenerLogCommand, SessionStopCommand } from './protocol.js';

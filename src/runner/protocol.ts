@@ -51,6 +51,15 @@ export interface SessionStopCommand {
 
 export type RunnerCommand = SessionStartCommand | RpcCommand | OracleDropHitCommand | OracleListenerLogCommand | SessionStopCommand;
 
+// Plain `Omit<RunnerCommand, 'id'>` collapses a union down to its shared
+// properties instead of applying Omit to each member -- this distributes
+// it instead, so callers building "everything except id" for whichever
+// specific command they're sending still get full per-kind field
+// checking. Exported so both the backend (which sends commands) and any
+// other future caller share one correct definition instead of each
+// re-deriving it slightly differently.
+export type RunnerCommandInput = RunnerCommand extends infer C ? Omit<C, 'id'> : never;
+
 export interface RunnerReply {
   kind: 'reply';
   id: number;
