@@ -68,6 +68,13 @@ Requires Docker and a paid API key (`--api-key` or `MCP_SEC_API_KEY`) --
 contact us for one. `check` will suggest `scan` automatically whenever a
 server isn't in our catalog yet.
 
+**Known limitation:** `--cmd` currently only auto-fetches packages
+published to the public npm registry (a plain `npx [-y] <pkg>[@version]`
+invocation). A server installed from a git tag, a private registry, or
+already vendored locally needs its dependencies present in your own
+environment before `scan` can reach it -- support for those is planned
+but not yet built.
+
 ## License
 
 Apache-2.0 -- see [LICENSE](./LICENSE).
