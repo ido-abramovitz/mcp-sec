@@ -1,0 +1,74 @@
+import type { Profile } from './types.js';
+
+// Wire protocol between the backend (holds the actual check/verdict logic,
+// never shipped here) and this runner (spins up the customer's own Docker
+// sandbox, relays raw MCP traffic). Deliberately public/inspectable: a
+// customer running the runner can see exactly what crosses the wire --
+// session lifecycle, a tool name + arguments to call, and two oracle
+// booleans. Never a payload-generation strategy, never a verdict rule.
+// One JSON object per WebSocket frame, `id`-correlated request/reply
+// (same idiom as mcp-client.ts's stdio framing, just resolved over
+// already-framed WS messages instead of newline-delimited stdio).
+
+export interface SessionStartCommand {
+  kind: 'session.start';
+  id: number;
+  profile: Profile;
+  cmd: string;
+  env: Record<string, string>;
+  callTimeoutMs: number;
+  runTimeoutMs: number;
+}
+
+export interface RpcCommand {
+  kind: 'rpc';
+  id: number;
+  sessionId: string;
+  method: string;
+  params: Record<string, unknown>;
+  meta?: Record<string, unknown>;
+}
+
+export interface OracleDropHitCommand {
+  kind: 'oracle.dropHit';
+  id: number;
+  sessionId: string;
+  token: string;
+}
+
+export interface OracleListenerLogCommand {
+  kind: 'oracle.listenerLog';
+  id: number;
+  sessionId: string;
+  token: string;
+}
+
+export interface SessionStopCommand {
+  kind: 'session.stop';
+  id: number;
+  sessionId: string;
+}
+
+export type RunnerCommand = SessionStartCommand | RpcCommand | OracleDropHitCommand | OracleListenerLogCommand | SessionStopCommand;
+
+// Plain `Omit<RunnerCommand, 'id'>` collapses a union down to its shared
+// properties instead of applying Omit to each member -- distribution only
+// happens when the checked type is a naked generic parameter of the
+// conditional type itself (not a concrete alias referenced from inside
+// one), so this needs its own generic helper rather than inlining
+// `RunnerCommand extends infer C ? ... : never` directly. Exported so both
+// the backend (which sends commands) and any other future caller share
+// one correct definition instead of each re-deriving it slightly
+// differently.
+type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never;
+export type RunnerCommandInput = DistributiveOmit<RunnerCommand, 'id'>;
+
+export interface RunnerReply {
+  kind: 'reply';
+  id: number;
+  ok: boolean;
+  // session.start -> { sessionId }; rpc -> the raw MCP result; oracle.* ->
+  // { hit: boolean }; session.stop -> {}.
+  result?: unknown;
+  error?: string;
+}

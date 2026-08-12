@@ -1,0 +1,89 @@
+# Sandbox profile for the AGENT INSTALL PHASE ONLY (orchestrator/
+# install-loop.ts) -- never used for actual security testing. Every other
+# profile in this directory deliberately blocks real internet access
+# (see docs/SAFETY.md); this is the one deliberate exception, because
+# `npx X@latest` / `uvx X@latest`-style installs need to reach the real
+# npm/PyPI registries, and M0's first real orchestrator run confirmed
+# empirically that none of the test-phase profiles can do this --
+# `uvx awslabs.aws-documentation-mcp-server@latest` failed identically
+# under airgapped, canary-net, AND postgres-net, all for the same reason
+# (no real route to PyPI).
+#
+# Still isolated the same way every other profile is: non-root, capped
+# resources, seccomp, no privilege escalation. Real network access is the
+# ONLY relaxed boundary here, and it's relaxed on purpose for exactly one
+# job (fetch and unpack a package), never for running the target's actual
+# MCP server logic -- that always happens afterward, under whichever
+# test-phase profile the target actually needs (airgapped/canary-net/
+# postgres-net/etc.), with network access back to its normal restricted
+# shape.
+#
+# ./target is WRITABLE here (every other profile mounts it read-only) --
+# this is where the install actually lands, so the test-phase profile's
+# read-only mount of the same host directory picks up exactly what got
+# installed, with no separate hand-off step.
+
+services:
+  target:
+    build: .
+
+    volumes:
+      - ./target:/home/runner/target
+
+    # Package managers need a writable HOME for caches/configs (npm's
+    # ~/.npm, pip's ~/.cache, etc.) -- tmpfs, gone when the container
+    # stops, same as every other profile's /tmp. The more specific bind
+    # mount above (./target inside this same tree) takes precedence at
+    # its own path, same nesting relationship the read-only root already
+    # has with every profile's explicit volume mounts.
+    tmpfs:
+      - /home/runner:size=512m,uid=10001,gid=10001
+      - /tmp:size=256m
+
+    # --- network: the one deliberate exception, see header comment ---
+    # Default bridge networking (real internet), not network_mode: none.
+    #
+    # single-request: confirmed empirically (docker exec, plain python
+    # socket calls) that glibc's default AF_UNSPEC lookup -- what every
+    # real installer uses (urllib, pip, npm) -- sends parallel A and AAAA
+    # queries to Docker's embedded resolver (127.0.0.11) over one UDP
+    # socket, and the pair intermittently collides: a pure AF_INET6 query
+    # alone correctly returns "no AAAA record" (pypi.org genuinely has
+    # none), but the combined parallel lookup fails outright with
+    # EAI_AGAIN instead of falling back to the working A result. This is
+    # a well-documented Docker/glibc interaction, not specific to this
+    # image. `dns:` alone (pointing at real public resolvers) does NOT
+    # fix it -- Docker's embedded proxy always sits in front of whatever
+    # upstream you set, so the parallel-query race still happens against
+    # 127.0.0.11 either way. `single-request` forces glibc to send A and
+    # AAAA sequentially instead, which does fix it.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    dns_opt:
+      - single-request
+
+    # --- privilege isolation: unchanged from every other profile ---
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      # Reused as-is, not a new file: seccomp filters WHICH SYSCALLS are
+      # allowed (socket/connect/etc.), not which hosts they can reach --
+      # that's the network driver's job, set above. The same syscall set
+      # canary-net already needs to reach one internal listener is
+      # exactly what's needed to reach the real internet too.
+      - seccomp:./seccomp-network.json
+
+    # --- resource isolation: a bit more headroom than test-phase
+    # profiles -- installs (native compilation, larger downloads) are
+    # heavier than running an already-installed MCP server, but still
+    # bounded, never unlimited.
+    mem_limit: 512m
+    pids_limit: 256
+    cpus: 1.0
+
+    # --- run as the non-root user from the Dockerfile, same as always ---
+    user: "10001:10001"
+
+    read_only: true

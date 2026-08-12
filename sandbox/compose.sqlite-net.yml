@@ -1,0 +1,57 @@
+# Sandbox profile for genai-toolbox's SQLite prebuilt config. Unlike
+# Postgres/MySQL, SQLite needs no second database container at all -- the
+# "backend" is just a file, seeded at build time (see target/seed-sqlite.js)
+# and copied into the target's writable /tmp at run time (the mounted
+# ./target volume is read-only, but SQLite needs to create -journal/-wal
+# sidecar files next to its database file even for read queries).
+#
+# canary-listener + cgnat-net are included for the same reason as
+# compose.postgres-net.yml: --force-profile routes every check (including
+# ssrf) through this one profile, so the ssrf oracle has to be present
+# here too, or ssrf's results would be silently meaningless.
+
+services:
+  target:
+    build: .
+    volumes:
+      - ./target:/home/runner/target:ro
+      # Required for path_traversal's sentinel mechanism and
+      # command_injection's out-of-band dropHit channel -- see the same
+      # comment in compose.postgres-net.yml for why this is not optional.
+      - ./sentinels:/home/runner/sentinels:ro
+      - ./drops:/home/runner/drops
+    tmpfs:
+      - /tmp:size=16m
+    networks:
+      - sqlite-net
+      - cgnat-net
+    dns:
+      - 100.64.55.10
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:./seccomp-network.json
+    mem_limit: 256m
+    pids_limit: 128
+    cpus: 0.5
+    user: "10001:10001"
+    read_only: true
+
+  canary-listener:
+    build: ./canary-listener
+    networks:
+      sqlite-net: {}
+      cgnat-net:
+        ipv4_address: 100.64.55.10
+    volumes:
+      - ./canary-hits:/var/log/canary-hits
+
+networks:
+  sqlite-net:
+    internal: true
+  cgnat-net:
+    internal: true
+    ipam:
+      config:
+        - subnet: 100.64.55.0/24

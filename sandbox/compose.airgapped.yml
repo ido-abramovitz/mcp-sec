@@ -1,0 +1,64 @@
+# Sandbox profile for checks that need ZERO network reachability
+# (command-injection, path-traversal). See compose.canary-net.yml for the
+# opposite-shaped profile SSRF/exfiltration checks will need.
+#
+# The security is in the settings below, not the image. Each line is a wall
+# between the untrusted server and the real machine.
+#
+# Used by red-engine/sandbox-runner.ts -- not meant to be run by hand except
+# for debugging (see README.md).
+
+services:
+  target:
+    build: .
+
+    # --- filesystem isolation ---
+    # The server under test is mounted READ-ONLY. It cannot modify files on
+    # the host.
+    volumes:
+      - ./target:/home/runner/target:ro
+      # A second, separate mount OUTSIDE the target's own directory tree --
+      # this is where path-traversal sentinel files get planted (by
+      # Red Engine, from the host, before each attempt). Also read-only into
+      # the container: the target should only ever be able to READ these
+      # if it's genuinely vulnerable, never write them.
+      - ./sentinels:/home/runner/sentinels:ro
+      # The mirror image of sentinels/: WRITABLE from the container, so an
+      # out-of-band side effect (e.g. command-injection's confirm payload
+      # touching a file here) is visible to Red Engine on the HOST after
+      # the container exits -- not just in the tool's own response text.
+      # Found necessary against a real target (mcp-server-kubernetes,
+      # CVE-2025-53355): its "scale" tool's success response only ever
+      # echoes back the raw pre-execution input, never actual command
+      # output, so a genuinely-executing injected command can be
+      # completely invisible to any response-text check. /tmp (below)
+      # can't serve this purpose -- it's tmpfs, gone when the container
+      # stops, never visible to the host at all.
+      - ./drops:/home/runner/drops
+    # A small writable scratch area IN the container only (tmpfs = RAM,
+    # gone when the container stops). Canary artifacts land here.
+    tmpfs:
+      - /tmp:size=16m
+
+    # --- network isolation ---
+    # No network at all. A malicious or vulnerable server cannot phone
+    # home, exfiltrate, or pull down more tools.
+    network_mode: none
+
+    # --- privilege isolation ---
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:./seccomp.json
+
+    # --- resource isolation ---
+    mem_limit: 256m
+    pids_limit: 128
+    cpus: 0.5
+
+    # --- run as the non-root user from the Dockerfile ---
+    user: "10001:10001"
+
+    # read-only root filesystem: only the tmpfs /tmp is writable.
+    read_only: true

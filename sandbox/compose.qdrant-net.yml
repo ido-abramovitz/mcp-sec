@@ -1,0 +1,64 @@
+# Sandbox profile for targets whose tools need a REAL local backend to do
+# anything meaningful, not just a canary oracle -- found necessary against
+# a real target (mcp-server-qdrant): unlike command_injection/path_traversal/
+# argument_injection's usual airgapped profile (no network at all) or ssrf's
+# canary-net profile (a fake listener that only logs hits), this target's
+# own tools (qdrant-find/qdrant-store) can't do anything at all without
+# reaching a real Qdrant instance -- even a "clean" command-injection test
+# is meaningless if the underlying call never got far enough to try.
+#
+# Shape is otherwise identical to compose.canary-net.yml: target gets an
+# internal-only Docker network containing exactly one other reachable
+# thing. Here that thing is a real, official qdrant/qdrant image (OUR OWN
+# trusted infrastructure, not the untrusted target) instead of a fake
+# canary listener -- same isolation guarantee (no route to the outside
+# world), different role for the second container.
+#
+# Used together with red-engine.ts's --force-profile flag: this target
+# needs every check (not just the ones whose own .profile is normally
+# canary-net-shaped) to run against this profile, since ALL of its calls
+# need real Qdrant reachability regardless of which vulnerability class is
+# being tested.
+
+services:
+  target:
+    build: .
+    volumes:
+      - ./target:/home/runner/target:ro
+      # Required for path_traversal's sentinel mechanism and
+      # command_injection's out-of-band dropHit channel -- see the same
+      # comment in compose.postgres-net.yml for why this is not optional
+      # whenever --force-profile is used (as this profile always is).
+      - ./sentinels:/home/runner/sentinels:ro
+      - ./drops:/home/runner/drops
+    tmpfs:
+      - /tmp:size=16m
+    networks:
+      - qdrant-net
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:./seccomp-network.json
+    # Bumped from the usual 256m/0.5 (airgapped/canary-net default): this
+    # target loads a real FastEmbed ONNX embedding model into memory to
+    # convert query/information strings into vectors -- meaningfully
+    # heavier than any prior target's runtime footprint.
+    mem_limit: 512m
+    pids_limit: 128
+    cpus: 1.0
+    user: "10001:10001"
+    read_only: true
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    networks:
+      - qdrant-net
+    # This is OUR OWN trusted infrastructure (the real, official Qdrant
+    # image), not the untrusted target -- it doesn't need the target's
+    # lockdown. Its data is ephemeral (no volume) -- gone when the
+    # container stops, which is fine, this is throwaway per-run state.
+
+networks:
+  qdrant-net:
+    internal: true   # no route to the outside world -- the whole point
