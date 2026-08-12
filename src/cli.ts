@@ -85,8 +85,8 @@ async function runProjectScan(failOn: string | null): Promise<void> {
   process.exitCode = exitCodeFor(results, failOn);
 }
 
-function parseScanArgs(argv: string[]): { cmd?: string; env: Record<string, string>; apiKey?: string } {
-  const args: { cmd?: string; env: Record<string, string>; apiKey?: string } = { env: {} };
+function parseScanArgs(argv: string[]): { cmd?: string; env: Record<string, string>; apiKey?: string; dir?: string } {
+  const args: { cmd?: string; env: Record<string, string>; apiKey?: string; dir?: string } = { env: {} };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--cmd') args.cmd = argv[++i];
     else if (argv[i] === '--env') {
@@ -94,6 +94,7 @@ function parseScanArgs(argv: string[]): { cmd?: string; env: Record<string, stri
       const eq = raw.indexOf('=');
       if (eq > 0) args.env[raw.slice(0, eq)] = raw.slice(eq + 1);
     } else if (argv[i] === '--api-key') args.apiKey = argv[++i];
+    else if (argv[i] === '--dir') args.dir = argv[++i];
   }
   return args;
 }
@@ -112,7 +113,7 @@ async function main(): Promise<void> {
         process.exitCode = 2;
         return;
       }
-      await runScanCommand({ cmd: scanArgs.cmd, env: scanArgs.env, apiKey: scanArgs.apiKey });
+      await runScanCommand({ cmd: scanArgs.cmd, env: scanArgs.env, apiKey: scanArgs.apiKey, dir: scanArgs.dir });
     } else if (positional.length === 0) {
       await runProjectScan(failOn);
     } else {

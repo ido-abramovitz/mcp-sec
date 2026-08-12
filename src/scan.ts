@@ -52,13 +52,38 @@ function ensureWorkingSandboxDir(): string {
   return workingDir;
 }
 
+// The sandbox container mounts sandboxDir/target as its own working
+// directory (see sandbox/compose.*.yml + Dockerfile's WORKDIR) -- `--cmd`
+// is expected to run from inside it, so the server code it references
+// has to actually be there. Copies the customer's own project directory
+// in fresh before every scan (never trusts leftover state from a
+// previous scan of a different server) and clears it after, same
+// "run, then clean up" discipline as this tool's own fixture test
+// scripts. Skips node_modules/.git -- irrelevant to what's being tested
+// and often huge; the target container installs its own deps if the
+// customer's --cmd needs that (e.g. `npm install && node server.js`).
+const SKIP_ENTRIES = new Set(['node_modules', '.git']);
+
+function packageProjectIntoSandbox(sourceDir: string, sandboxDir: string): void {
+  const targetDir = path.join(sandboxDir, 'target');
+  fs.rmSync(targetDir, { recursive: true, force: true });
+  fs.mkdirSync(targetDir, { recursive: true });
+  for (const entry of fs.readdirSync(sourceDir)) {
+    if (SKIP_ENTRIES.has(entry)) continue;
+    fs.cpSync(path.join(sourceDir, entry), path.join(targetDir, entry), { recursive: true });
+  }
+}
+
 export interface ScanArgs {
   cmd: string;
   env: Record<string, string>;
   apiKey?: string;
+  // Defaults to the current working directory -- run `mcp-sec scan` from
+  // inside your MCP server's own project, same as you'd run `npm start`.
+  dir?: string;
 }
 
-export async function runScanCommand({ cmd, env, apiKey: apiKeyArg }: ScanArgs): Promise<void> {
+export async function runScanCommand({ cmd, env, apiKey: apiKeyArg, dir }: ScanArgs): Promise<void> {
   const apiKey = apiKeyArg ?? process.env.MCP_SEC_API_KEY;
   if (!apiKey) {
     console.error('mcp-sec scan: no API key given -- pass --api-key or set MCP_SEC_API_KEY.');
@@ -75,6 +100,7 @@ export async function runScanCommand({ cmd, env, apiKey: apiKeyArg }: ScanArgs):
   }
 
   const sandboxDir = ensureWorkingSandboxDir();
+  packageProjectIntoSandbox(dir ?? process.cwd(), sandboxDir);
   console.error(`mcp-sec scan: connecting to ${SCAN_URL} ...`);
 
   let resultExitCode = 1;
