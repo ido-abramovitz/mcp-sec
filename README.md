@@ -50,6 +50,24 @@ found in local config files (Claude Desktop, Cursor, `.mcp.json`, etc.):
 mcp-sec
 ```
 
+## Live scanning
+
+`check` only answers "is this exact, already-published version known
+safe" -- it can never say anything about a server that isn't in our
+catalog yet, including your own internal or unpublished ones. For that,
+`scan` runs the real canary-based proof checks live, in a sandboxed
+Docker container **on your own machine** -- your server's code and any
+secrets never leave it. The proprietary payload/verdict logic stays on
+our backend; your machine only relays sandboxed traffic to it.
+
+```bash
+mcp-sec scan --cmd "npx -y <package>@<version>" [--env KEY=VAL ...]
+```
+
+Requires Docker and a paid API key (`--api-key` or `MCP_SEC_API_KEY`) --
+contact us for one. `check` will suggest `scan` automatically whenever a
+server isn't in our catalog yet.
+
 ## License
 
 Apache-2.0 -- see [LICENSE](./LICENSE).
