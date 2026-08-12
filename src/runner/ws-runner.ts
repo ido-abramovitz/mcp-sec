@@ -1,7 +1,7 @@
 import { WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit } from './sandbox-runner.js';
+import { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit, installTarget, extractNpxPackageSpec } from './sandbox-runner.js';
 import { attachClient } from './mcp-client.js';
 import type { McpClient } from './types.js';
 import type { RunnerCommand, RunnerReply } from './protocol.js';
@@ -109,6 +109,21 @@ export function runWsRunner({ url, sandboxDir, apiKey, cmd: targetCmd, env: targ
               sessions.delete(cmd.sessionId);
             }
             reply({ kind: 'reply', id: cmd.id, ok: true, result: {} });
+            break;
+          }
+          case 'install': {
+            const packageSpec = extractNpxPackageSpec(cmd.cmd);
+            if (!packageSpec) {
+              reply({ kind: 'reply', id: cmd.id, ok: true, result: { installed: false } });
+              break;
+            }
+            onLog(`installing ${packageSpec} (network-enabled install pass) ...`);
+            const installResult = installTarget({ sandboxDir, packageSpec });
+            if (!installResult.ok) {
+              reply({ kind: 'reply', id: cmd.id, ok: false, error: installResult.error });
+              break;
+            }
+            reply({ kind: 'reply', id: cmd.id, ok: true, result: { installed: true, packageSpec } });
             break;
           }
           case 'scan.info': {

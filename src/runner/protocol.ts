@@ -49,6 +49,20 @@ export interface SessionStopCommand {
   sessionId: string;
 }
 
+// Sent once, before the first session.start of a scan -- asks the runner
+// to fetch/cache whatever `cmd` needs (currently: npx-style installs only,
+// see sandbox-runner.ts's extractNpxPackageSpec) under the one profile
+// with real network access, so every later session.start's network-
+// isolated profile can resolve it locally with no network call. A cmd
+// that isn't an npx invocation has nothing to fetch -- the runner replies
+// ok with installed:false rather than treating that as an error.
+export interface InstallCommand {
+  kind: 'install';
+  id: number;
+  cmd: string;
+  env: Record<string, string>;
+}
+
 // Backend asks the runner what to actually scan -- the runner (the
 // customer's own machine) is the one that knows how to launch their MCP
 // server; the backend never guesses or is told out-of-band. Reuses the
@@ -71,7 +85,7 @@ export interface ScanReportCommand {
   text: string;
 }
 
-export type RunnerCommand = SessionStartCommand | RpcCommand | OracleDropHitCommand | OracleListenerLogCommand | SessionStopCommand | ScanInfoCommand | ScanReportCommand;
+export type RunnerCommand = SessionStartCommand | RpcCommand | OracleDropHitCommand | OracleListenerLogCommand | SessionStopCommand | ScanInfoCommand | ScanReportCommand | InstallCommand;
 
 // Plain `Omit<RunnerCommand, 'id'>` collapses a union down to its shared
 // properties instead of applying Omit to each member -- distribution only

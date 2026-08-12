@@ -111,6 +111,47 @@ function listenerLog(sandboxDir: string, token: string): boolean {
   return fs.readFileSync(logPath, 'utf8').includes(token);
 }
 
+// Runs a target's fetch/install step under compose.install.yml -- the one
+// profile with real network access (see that file's own header comment),
+// on purpose, ONLY for this. Installs into ./target itself (npm --prefix),
+// not the default global npx cache, because ./target is the exact host
+// directory every other (network-isolated) profile mounts back in
+// read-only -- so whatever lands here at install time is exactly what a
+// later `npx <pkg>@<version>` at test time resolves locally, with no
+// network call, via npx's own node_modules-first resolution. Every
+// historical target in this project needed this same fetch-then-reuse
+// step; only difference is a human used to do it by hand.
+function installTarget({ sandboxDir, packageSpec }: { sandboxDir: string; packageSpec: string }): { ok: boolean; error?: string } {
+  const result = spawnSync(
+    'docker',
+    ['compose', '-f', 'compose.install.yml', 'run', '--rm', '-T', 'target', 'sh', '-c', `npm install --no-audit --no-fund --prefix /home/runner/target ${packageSpec}`],
+    { cwd: sandboxDir, encoding: 'utf8' },
+  );
+  if (result.status !== 0) {
+    const detail = (result.stderr || result.stdout || 'install failed').trim();
+    return { ok: false, error: detail.slice(-2000) };
+  }
+  return { ok: true };
+}
+
+// Recognizes only the one shape every real MCP server config in this
+// project actually uses: `npx [-y] <pkg>[@<version>] [server args...]`.
+// The package spec is the FIRST non-flag token after npx -- unlike
+// config.ts's extractPackageSpec (which reads the LAST non-flag token out
+// of a static config's args array, for a different "wrapper installer
+// CLI" shape) -- here anything after the package spec is the target
+// server's own arguments, not part of what npx needs to fetch. Anything
+// that isn't an npx invocation (a bare local script, an already-installed
+// binary, etc.) has nothing to fetch, so this returns null and the
+// install step is skipped entirely -- matches how a customer's own
+// already-vendored project code was always handled.
+function extractNpxPackageSpec(cmd: string): string | null {
+  const tokens = cmd.trim().split(/\s+/);
+  if (tokens[0] !== 'npx') return null;
+  const nonFlags = tokens.slice(1).filter((t) => !t.startsWith('-'));
+  return nonFlags.length > 0 ? nonFlags[0] : null;
+}
+
 // The out-of-band oracle for BLIND checks that can't rely on response text
 // at all (e.g. command injection): did a file matching this exact token
 // show up in the host-visible drop zone? Consumes the file on a hit.
@@ -125,5 +166,5 @@ function dropHit(sandboxDir: string, token: string): boolean {
   return true;
 }
 
-export { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit, PROFILE_COMPOSE_FILES };
+export { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit, installTarget, extractNpxPackageSpec, PROFILE_COMPOSE_FILES };
 export type { Profile };
