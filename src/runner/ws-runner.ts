@@ -31,10 +31,17 @@ export interface RunOptions {
   // invalid/missing key is rejected before any socket exists at all
   // (never inside a WS frame, never logged as part of the protocol).
   apiKey: string;
+  // What to actually scan -- the runner (this machine) is the one that
+  // knows how to launch the customer's own MCP server; answered when the
+  // backend asks via scan.info, never guessed or configured backend-side.
+  cmd: string;
+  env: Record<string, string>;
   onLog?: (line: string) => void;
+  // Called once, when the backend delivers the finished scan.report.
+  onResult?: (result: { exitCode: number; text: string }) => void;
 }
 
-export function runWsRunner({ url, sandboxDir, apiKey, onLog = () => {} }: RunOptions): Promise<void> {
+export function runWsRunner({ url, sandboxDir, apiKey, cmd: targetCmd, env: targetEnv, onLog = () => {}, onResult = () => {} }: RunOptions): Promise<void> {
   return new Promise((resolve, reject) => {
     const sessions = new Map<string, LiveSession>();
     const ws = new WebSocket(url, { headers: { Authorization: `Bearer ${apiKey}` } });
@@ -101,6 +108,15 @@ export function runWsRunner({ url, sandboxDir, apiKey, onLog = () => {} }: RunOp
               stopSupportServices({ sandboxDir: session.sandboxDir, profile: session.profile as any });
               sessions.delete(cmd.sessionId);
             }
+            reply({ kind: 'reply', id: cmd.id, ok: true, result: {} });
+            break;
+          }
+          case 'scan.info': {
+            reply({ kind: 'reply', id: cmd.id, ok: true, result: { cmd: targetCmd, env: targetEnv } });
+            break;
+          }
+          case 'scan.report': {
+            onResult({ exitCode: cmd.exitCode, text: cmd.text });
             reply({ kind: 'reply', id: cmd.id, ok: true, result: {} });
             break;
           }

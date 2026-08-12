@@ -49,7 +49,29 @@ export interface SessionStopCommand {
   sessionId: string;
 }
 
-export type RunnerCommand = SessionStartCommand | RpcCommand | OracleDropHitCommand | OracleListenerLogCommand | SessionStopCommand;
+// Backend asks the runner what to actually scan -- the runner (the
+// customer's own machine) is the one that knows how to launch their MCP
+// server; the backend never guesses or is told out-of-band. Reuses the
+// same request/reply idiom as every other command instead of a separate
+// unsolicited-announcement channel.
+export interface ScanInfoCommand {
+  kind: 'scan.info';
+  id: number;
+}
+
+// Backend delivers the finished verdict to the runner for local display
+// -- the one message in this protocol that carries an actual result
+// (proven/clean/etc per candidate), never a payload or a rule, just the
+// same coverage/findings shape red-engine.ts's own report.ts already
+// renders locally.
+export interface ScanReportCommand {
+  kind: 'scan.report';
+  id: number;
+  exitCode: number;
+  text: string;
+}
+
+export type RunnerCommand = SessionStartCommand | RpcCommand | OracleDropHitCommand | OracleListenerLogCommand | SessionStopCommand | ScanInfoCommand | ScanReportCommand;
 
 // Plain `Omit<RunnerCommand, 'id'>` collapses a union down to its shared
 // properties instead of applying Omit to each member -- distribution only
