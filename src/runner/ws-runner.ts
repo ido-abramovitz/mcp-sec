@@ -26,13 +26,18 @@ interface LiveSession {
 export interface RunOptions {
   url: string;
   sandboxDir: string;
+  // Identifies this connection to the backend as a specific customer --
+  // sent as a bearer token on the WS upgrade request itself, so an
+  // invalid/missing key is rejected before any socket exists at all
+  // (never inside a WS frame, never logged as part of the protocol).
+  apiKey: string;
   onLog?: (line: string) => void;
 }
 
-export function runWsRunner({ url, sandboxDir, onLog = () => {} }: RunOptions): Promise<void> {
+export function runWsRunner({ url, sandboxDir, apiKey, onLog = () => {} }: RunOptions): Promise<void> {
   return new Promise((resolve, reject) => {
     const sessions = new Map<string, LiveSession>();
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url, { headers: { Authorization: `Bearer ${apiKey}` } });
 
     function reply(msg: RunnerReply) {
       ws.send(JSON.stringify(msg));
