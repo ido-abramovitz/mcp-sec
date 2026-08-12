@@ -2,6 +2,7 @@
 
 import { checkPackage, type CheckResult } from './api.js';
 import { discoverConfiguredServers } from './config.js';
+import { runScanCommand } from './scan.js';
 
 const SYMBOLS: Record<CheckResult['status'], string> = {
   clean: '\x1b[32m✔\x1b[0m',
@@ -21,6 +22,9 @@ function printResult(label: string, result: CheckResult): void {
   }
   if (result.message && result.status !== 'unknown') {
     console.log(`  ${result.message}`);
+  }
+  if (result.status === 'unknown') {
+    console.log(`  Not in our catalog yet -- run \`mcp-sec scan\` to test it live on your own machine.`);
   }
 }
 
@@ -81,16 +85,40 @@ async function runProjectScan(failOn: string | null): Promise<void> {
   process.exitCode = exitCodeFor(results, failOn);
 }
 
+function parseScanArgs(argv: string[]): { cmd?: string; env: Record<string, string>; apiKey?: string } {
+  const args: { cmd?: string; env: Record<string, string>; apiKey?: string } = { env: {} };
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--cmd') args.cmd = argv[++i];
+    else if (argv[i] === '--env') {
+      const raw = argv[++i] ?? '';
+      const eq = raw.indexOf('=');
+      if (eq > 0) args.env[raw.slice(0, eq)] = raw.slice(eq + 1);
+    } else if (argv[i] === '--api-key') args.apiKey = argv[++i];
+  }
+  return args;
+}
+
 async function main(): Promise<void> {
-  const { positional, failOn } = parseArgs(process.argv.slice(2));
+  const rawArgs = process.argv.slice(2);
+  const { positional, failOn } = parseArgs(rawArgs);
 
   try {
     if (positional[0] === 'check' && positional[1]) {
       await runSingleCheck(positional[1], failOn);
+    } else if (positional[0] === 'scan') {
+      const scanArgs = parseScanArgs(rawArgs.slice(1));
+      if (!scanArgs.cmd) {
+        console.error('Usage: mcp-sec scan --cmd "<server command>" [--env KEY=VAL ...] [--api-key <key>]');
+        process.exitCode = 2;
+        return;
+      }
+      await runScanCommand({ cmd: scanArgs.cmd, env: scanArgs.env, apiKey: scanArgs.apiKey });
     } else if (positional.length === 0) {
       await runProjectScan(failOn);
     } else {
-      console.error('Usage:\n  mcp-sec check <name>[@<version>]\n  mcp-sec  (scans your configured MCP servers)');
+      console.error(
+        'Usage:\n  mcp-sec check <name>[@<version>]\n  mcp-sec  (scans your configured MCP servers)\n  mcp-sec scan --cmd "<server command>" [--env KEY=VAL ...] [--api-key <key>]  (live sandboxed scan, paid)'
+      );
       process.exitCode = 2;
     }
   } catch (err) {

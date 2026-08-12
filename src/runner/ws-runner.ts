@@ -128,5 +128,13 @@ export function runWsRunner({ url, sandboxDir, apiKey, cmd: targetCmd, env: targ
 
     ws.on('close', () => resolve());
     ws.on('error', (err) => reject(err));
+    // ws only emits 'error' for a transport-level failure -- an
+    // authentication rejection on the upgrade request (scan-server.ts's
+    // 401) surfaces here instead, and without this handler the socket
+    // just aborts straight to 'close', which would silently resolve as
+    // if the scan had simply finished with no result.
+    ws.on('unexpected-response', (_req, res) => {
+      reject(new Error(`backend rejected the connection (HTTP ${res.statusCode}) -- check your API key`));
+    });
   });
 }
