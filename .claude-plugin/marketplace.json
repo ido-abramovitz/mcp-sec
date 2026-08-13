@@ -1,0 +1,13 @@
+{
+  "name": "mcp-sec",
+  "owner": {
+    "name": "mcp-sec"
+  },
+  "plugins": [
+    {
+      "name": "mcp-sec",
+      "source": "./plugin/mcp-sec",
+      "description": "Canary-proof security checks for MCP servers -- adds a check_mcp_server_security tool so Claude can verify a server's real safety before you add it."
+    }
+  ]
+}

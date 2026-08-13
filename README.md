@@ -50,6 +50,18 @@ found in local config files (Claude Desktop, Cursor, `.mcp.json`, etc.):
 mcp-sec
 ```
 
+## Claude Code plugin
+
+Adds a `check_mcp_server_security` tool Claude can call directly --
+useful the moment you're about to add a new MCP server, since Claude
+can check it before it's ever installed instead of you running this
+separately afterward.
+
+```
+/plugin marketplace add ido-abramovitz/mcp-sec
+/plugin install mcp-sec@mcp-sec
+```
+
 ## Live scanning
 
 `check` only answers "is this exact, already-published version known

@@ -6,7 +6,8 @@
   "license": "Apache-2.0",
   "bin": {
     "mcp-sec": "./dist/cli.js",
-    "mcp-sec-runner": "./dist/runner/ws-runner-cli.js"
+    "mcp-sec-runner": "./dist/runner/ws-runner-cli.js",
+    "mcp-sec-mcp-server": "./dist/mcp-server.js"
   },
   "exports": {
     ".": "./dist/cli.js",
@@ -28,7 +29,9 @@
     "sandbox:clean": "cd sandbox && docker compose -f compose.airgapped.yml down --remove-orphans && docker compose -f compose.canary-net.yml down --remove-orphans"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
