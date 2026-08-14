@@ -121,12 +121,32 @@ function listenerLog(sandboxDir: string, token: string): boolean {
 // network call, via npx's own node_modules-first resolution. Every
 // historical target in this project needed this same fetch-then-reuse
 // step; only difference is a human used to do it by hand.
+// Bounded at 2 minutes -- generous for what should be a small MCP server
+// package (real installs observed so far: 2-11s), but still finite. Before
+// this, spawnSync had no timeout at all: a hung `npm install` (a
+// postinstall script waiting on an unreachable network call, a registry
+// retry loop, etc.) blocked the whole process indefinitely with zero
+// recovery -- confirmed live against @agentek/mcp-server@0.1.27, which sat
+// for 1h51m using 3s of CPU time before being killed by hand.
+const INSTALL_TIMEOUT_MS = 120_000;
+
 function installTarget({ sandboxDir, packageSpec }: { sandboxDir: string; packageSpec: string }): { ok: boolean; error?: string } {
   const result = spawnSync(
     'docker',
     ['compose', '-f', 'compose.install.yml', 'run', '--rm', '-T', 'target', 'sh', '-c', `npm install --no-audit --no-fund --prefix /home/runner/target ${packageSpec}`],
-    { cwd: sandboxDir, encoding: 'utf8' },
+    { cwd: sandboxDir, encoding: 'utf8', timeout: INSTALL_TIMEOUT_MS },
   );
+  // Killing the `docker compose run` client process (what the timeout
+  // option's signal targets) does not reliably stop the container it
+  // launched -- confirmed live: five orphaned sandbox-target-run-*
+  // containers, one up to 50 minutes old, survived their client process
+  // dying. `down --remove-orphans` is scoped to this compose file's own
+  // project (compose.install.yml), so it only ever cleans up this
+  // install's own container, never another profile's.
+  if (result.signal || result.error?.message?.includes('ETIMEDOUT')) {
+    spawnSync('docker', ['compose', '-f', 'compose.install.yml', 'down', '--remove-orphans'], { cwd: sandboxDir });
+    return { ok: false, error: `install timed out after ${INSTALL_TIMEOUT_MS}ms (packageSpec=${packageSpec})` };
+  }
   if (result.status !== 0) {
     const detail = (result.stderr || result.stdout || 'install failed').trim();
     return { ok: false, error: detail.slice(-2000) };
