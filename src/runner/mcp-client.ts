@@ -54,12 +54,16 @@ function attachClient(proc: ChildProcessWithoutNullStreams, { callTimeoutMs = 50
   // pipes. Writing to -- or reading from -- an already-closed pipe emits an
   // 'error' event that, left unhandled, throws and crashes this whole
   // process, discarding every result already collected in the run instead
-  // of just failing the one in-flight call. `stdin`/`stdout` carry the RPC
-  // traffic `rpc()` and the 'data' handler above depend on; `stderr` only
-  // needs to not crash the process, so its listener is a no-op.
+  // of just failing the one in-flight call. Only stdin/stdout carry the RPC
+  // traffic `rpc()` and the 'data' handler above depend on -- deliberately
+  // NOT touching stderr: sandbox-runner.ts's startTarget() spawns with
+  // stdio's third slot as 'ignore' (see its own comment on that spawn
+  // call), so proc.stderr is actually null at runtime there despite the
+  // ChildProcessWithoutNullStreams type saying otherwise; calling .on() on
+  // it crashed every session at startup (2026-08-18 regression, caught via
+  // production monitoring within ~20min of deploy).
   proc.stdin.on('error', drainPending);
   proc.stdout.on('error', drainPending);
-  proc.stderr.on('error', () => {});
 
   // `meta`, when given, is sent as `params._meta` -- the MCP protocol's own
   // per-request metadata slot (distinct from tool `arguments`). Used by

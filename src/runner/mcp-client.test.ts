@@ -37,6 +37,26 @@ test('rpc() resolves instead of hanging when stdin errors mid-call', async () =>
   proc.kill();
 });
 
+test('attachClient() does not crash when stderr is null (production stdio config)', async () => {
+  // sandbox-runner.ts's real startTarget() spawns with stdio's third slot
+  // as 'ignore' (docker's own stderr isn't consumed), making proc.stderr
+  // null at runtime despite the ChildProcessWithoutNullStreams type saying
+  // otherwise -- every earlier test in this file used a fully-piped stdio
+  // ['pipe','pipe','pipe'], which is why a regression here (calling
+  // proc.stderr.on(...) unconditionally) reached production undetected and
+  // crashed every session at startup within ~20min of deploy. This is the
+  // one test that matches production's actual spawn shape.
+  const proc = spawn('node', ['-e', 'process.exit(0)'], { stdio: ['pipe', 'pipe', 'ignore'] });
+  assert.equal(proc.stderr, null, 'sanity check: this stdio config really does produce a null stderr');
+  await new Promise<void>((resolve) => proc.once('exit', () => resolve()));
+
+  // Reaching this line at all is the point: before the fix, constructing
+  // the client threw synchronously inside attachClient() itself.
+  const client = attachClient(proc as any, { callTimeoutMs: 200 });
+  const result = await client.rpc('ping', {});
+  assert.deepEqual(result, { __timedOut: true });
+});
+
 test('rpc() settles a second call cleanly when the target exits between two writes', async () => {
   // A minimal fake target: answers the first request with a real matched
   // JSON-RPC result (proving the transport works normally end to end), then
