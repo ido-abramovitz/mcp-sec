@@ -40,13 +40,26 @@ function attachClient(proc: ChildProcessWithoutNullStreams, { callTimeoutMs = 50
     }
   });
 
-  proc.once('exit', () => {
+  function drainPending() {
     for (const [, entry] of pending) {
       clearTimeout(entry.timer);
       entry.resolve({ __timedOut: true, __processExited: true });
     }
     pending.clear();
-  });
+  }
+
+  proc.once('exit', drainPending);
+
+  // A target that dies mid-run (crash, OOM-kill, etc.) closes its stdio
+  // pipes. Writing to -- or reading from -- an already-closed pipe emits an
+  // 'error' event that, left unhandled, throws and crashes this whole
+  // process, discarding every result already collected in the run instead
+  // of just failing the one in-flight call. `stdin`/`stdout` carry the RPC
+  // traffic `rpc()` and the 'data' handler above depend on; `stderr` only
+  // needs to not crash the process, so its listener is a no-op.
+  proc.stdin.on('error', drainPending);
+  proc.stdout.on('error', drainPending);
+  proc.stderr.on('error', () => {});
 
   // `meta`, when given, is sent as `params._meta` -- the MCP protocol's own
   // per-request metadata slot (distinct from tool `arguments`). Used by
@@ -61,7 +74,17 @@ function attachClient(proc: ChildProcessWithoutNullStreams, { callTimeoutMs = 50
       }, callTimeoutMs);
       pending.set(id, { resolve, timer });
       const fullParams = meta ? { ...params, _meta: meta } : params;
-      proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params: fullParams }) + '\n');
+      try {
+        proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params: fullParams }) + '\n');
+      } catch {
+        // Rare synchronous-throw path (stream already destroyed before we
+        // even attempted the write); the 'error' listener above covers the
+        // more common asynchronous EPIPE case. Either way the call must
+        // still resolve instead of hanging until callTimeoutMs.
+        pending.delete(id);
+        clearTimeout(timer);
+        resolve({ __timedOut: true, __processExited: true });
+      }
     });
   }
 
