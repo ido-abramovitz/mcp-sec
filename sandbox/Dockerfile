@@ -22,8 +22,16 @@ FROM node:22-slim
 # both dlopen these at runtime and fail fast without them ("Couldn't find
 # a valid ICU package" / "No usable version of libssl was found"), even
 # though the target never gets real network access here.
+#
+# build-essential: proof-engine's scan-batch.js was classifying a real,
+# recurring failure bucket as install_native_build_unsupported -- every
+# sampled npm error showed node-gyp failing with "not found: make" or a
+# missing C++ compiler (glibc's toolchain was never installed here, only
+# the interpreters above). Adds real build time/image size, deliberately
+# accepted now that a live production bucket depends on it (previously
+# deferred as a rushed change with no evidence forcing the tradeoff).
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
-    git python3 python3-pip python3-venv libicu72 libssl3 \
+    git python3 python3-pip python3-venv libicu72 libssl3 build-essential \
   && rm -rf /var/lib/apt/lists/*
 
 # Run as a non-root user. Even if the server is compromised, it isn't root
