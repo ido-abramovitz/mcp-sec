@@ -46,12 +46,25 @@ function startSupportServices({ sandboxDir, profile }: { sandboxDir: string; pro
   const composeFile = PROFILE_COMPOSE_FILES[profile];
   const services = PROFILE_SUPPORT_SERVICES[profile] || [];
   if (services.length === 0) return;
+  // stdio was 'ignore' -- every failure of this call landed in
+  // proof-engine's ledger as the same content-free "failed to start
+  // support services [...]" message regardless of the real Docker Compose
+  // error, making it impossible to tell a resource-exhaustion failure
+  // (candidate root cause: this box is 2 vCPU/1.9GB, and postgres-net
+  // starts a real Postgres container concurrently with other scan
+  // workers' own compose projects) apart from a port conflict, a stale
+  // network, or a missing image -- same content-free-message anti-pattern
+  // proof-engine's own #105 already fixed for scan_timeout, just one repo
+  // over. Capturing it doesn't change behavior on success (still throws
+  // on any non-zero exit); it only means the NEXT failure is diagnosable
+  // instead of a guess.
   const result = spawnSync('docker', ['compose', '-f', composeFile, 'up', '-d', ...services], {
     cwd: sandboxDir,
-    stdio: 'ignore',
+    encoding: 'utf8',
   });
   if (result.status !== 0) {
-    throw new Error(`failed to start support services [${services.join(', ')}] for profile ${profile}`);
+    const output = String(result.stderr || result.stdout || '').trim().slice(-1500);
+    throw new Error(`failed to start support services [${services.join(', ')}] for profile ${profile}${output ? `: ${output}` : ' (no output captured)'}`);
   }
 }
 
