@@ -25,7 +25,7 @@ import dgram from 'node:dgram';
 const PORT = 53;
 const REBIND_HOSTNAME = 'rebind-canary.test';
 const SAFE_IP = '93.184.216.34'; // a normal-looking public IP (formerly example.com) -- not reachable, not our concern; only needs to structurally pass an "is this private/blocked" check
-const REBIND_IP = '100.64.55.10'; // canary-listener's own real, reachable address
+const REBIND_IP = process.env.CGNAT_LISTENER_IP || '100.64.55.10'; // canary-listener's own real, reachable address (per-job when set, see sandbox-runner.ts's deriveCgnatAddressing)
 const DOCKER_DNS = '127.0.0.11';
 
 const queryCountByName = new Map<string, number>();

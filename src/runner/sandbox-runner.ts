@@ -3,6 +3,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Profile } from './types.js';
 
 import { spawn, spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -42,10 +43,38 @@ const PROFILE_SUPPORT_SERVICES: Record<Profile, string[]> = {
   'mysql-net': ['mysql', 'canary-listener'],
 };
 
+// cgnat-net's subnet/listener IP used to be hardcoded identically across
+// every job (100.64.55.0/24, listener at .10, in the postgres-net/mysql-
+// net/sqlite-net compose files) -- harmless with one job at a time, but
+// two concurrent jobs on any of those profiles collide on the exact same
+// Docker network subnet and one fails outright ("Pool overlaps with other
+// one on this address space"). Derives a per-job /24 within the same RFC
+// 6598 CGNAT range (100.64.0.0/10) from sandboxDir itself -- already
+// guaranteed unique per job, so no new parameter needed anywhere in the
+// call chain. 100.64.0.0/10 has room for 16384 distinct /24s (64 values
+// in the second octet x 256 in the third), comfortably more than this
+// system will ever run concurrently.
+function deriveCgnatAddressing(sandboxDir: string): { subnet: string; listenerIp: string } {
+  const hash = crypto.createHash('sha256').update(sandboxDir).digest();
+  const offset = hash.readUInt16BE(0) % 16384;
+  const octet2 = 64 + (offset >> 8);
+  const octet3 = offset & 255;
+  return { subnet: `100.${octet2}.${octet3}.0/24`, listenerIp: `100.${octet2}.${octet3}.10` };
+}
+
 function startSupportServices({ sandboxDir, profile }: { sandboxDir: string; profile: Profile }) {
   const composeFile = PROFILE_COMPOSE_FILES[profile];
   const services = PROFILE_SUPPORT_SERVICES[profile] || [];
   if (services.length === 0) return;
+  // Written unconditionally (even for profiles whose compose file doesn't
+  // reference these vars, e.g. canary-net/qdrant-net) -- harmless, and
+  // simpler than tracking which profiles need it. Docker Compose reads a
+  // .env file from the SAME directory it's invoked from (cwd below), and
+  // this always runs before the compose invocations that need it (both
+  // this function's own `up -d` and startTarget's `run`, called right
+  // after with this same sandboxDir).
+  const { subnet, listenerIp } = deriveCgnatAddressing(sandboxDir);
+  fs.writeFileSync(path.join(sandboxDir, '.env'), `CGNAT_SUBNET=${subnet}\nCGNAT_LISTENER_IP=${listenerIp}\n`);
   // stdio was 'ignore' -- every failure of this call landed in
   // proof-engine's ledger as the same content-free "failed to start
   // support services [...]" message regardless of the real Docker Compose
@@ -199,5 +228,5 @@ function dropHit(sandboxDir: string, token: string): boolean {
   return true;
 }
 
-export { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit, installTarget, extractNpxPackageSpec, PROFILE_COMPOSE_FILES };
+export { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit, installTarget, extractNpxPackageSpec, PROFILE_COMPOSE_FILES, deriveCgnatAddressing };
 export type { Profile };

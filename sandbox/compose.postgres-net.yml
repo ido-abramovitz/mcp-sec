@@ -14,13 +14,21 @@
 # would silently make ssrf's "clean" results meaningless (a DNS-lookup
 # failure looks identical to "target correctly blocked it").
 #
-# cgnat-net is a SECOND, additional network (100.64.55.0/24, the RFC 6598
-# CGNAT shared address space) -- both target and canary-listener are
+# cgnat-net is a SECOND, additional network (RFC 6598 CGNAT shared
+# address space, 100.64.0.0/10) -- both target and canary-listener are
 # dual-homed onto it, giving the listener a second, real, routable
 # address inside a range genai-toolbox's own SSRF guard explicitly
 # special-cases as blocked (see internal/sources/http/http.go's
 # cgnatRange). Lets a check variant test that block empirically (reach a
 # literal 100.64.x.x address) instead of just trusting the source read.
+#
+# CGNAT_SUBNET/CGNAT_LISTENER_IP come from a per-job .env file
+# (sandbox-runner.ts's deriveCgnatAddressing(), written before this
+# compose file is ever invoked) so two jobs running this profile
+# concurrently get distinct, non-colliding Docker network subnets instead
+# of fighting over the exact same one. The literal defaults below only
+# apply if that .env file is somehow missing -- e.g. this compose file
+# invoked by hand outside the normal pipeline.
 
 services:
   target:
@@ -49,7 +57,7 @@ services:
     # itself) to Docker's real resolver, so this is a no-op for every
     # other check/variant.
     dns:
-      - 100.64.55.10
+      - ${CGNAT_LISTENER_IP:-100.64.55.10}
     cap_drop:
       - ALL
     security_opt:
@@ -78,7 +86,9 @@ services:
     networks:
       postgres-net: {}
       cgnat-net:
-        ipv4_address: 100.64.55.10
+        ipv4_address: ${CGNAT_LISTENER_IP:-100.64.55.10}
+    environment:
+      CGNAT_LISTENER_IP: ${CGNAT_LISTENER_IP:-100.64.55.10}
     volumes:
       - ./canary-hits:/var/log/canary-hits
     # Same trusted, un-hardened role as in compose.canary-net.yml -- its
@@ -91,4 +101,4 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: 100.64.55.0/24
+        - subnet: ${CGNAT_SUBNET:-100.64.55.0/24}

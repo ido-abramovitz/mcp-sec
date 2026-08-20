@@ -29,11 +29,12 @@ const LOG_PATH = '/var/log/canary-hits/hits.log';
 // URL before following it. Every other path keeps the original
 // behavior unchanged.
 const CGNAT_REDIRECT_PREFIX = '/redirect-to-cgnat/';
+const LISTENER_IP = process.env.CGNAT_LISTENER_IP || '100.64.55.10';
 
 const server = http.createServer((req: any, res: any) => {
   if (req.url && req.url.startsWith(CGNAT_REDIRECT_PREFIX)) {
     const token = req.url.slice(CGNAT_REDIRECT_PREFIX.length);
-    res.writeHead(302, { Location: `http://100.64.55.10:8080/${token}` });
+    res.writeHead(302, { Location: `http://${LISTENER_IP}:8080/${token}` });
     res.end();
     return;
   }
