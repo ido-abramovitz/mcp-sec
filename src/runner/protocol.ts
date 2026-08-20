@@ -103,8 +103,8 @@ export interface RunnerReply {
   kind: 'reply';
   id: number;
   ok: boolean;
-  // session.start -> { sessionId }; rpc -> the raw MCP result; oracle.* ->
-  // { hit: boolean }; session.stop -> {}.
+  // session.start -> { sessionId, cgnatListenerIp }; rpc -> the raw MCP
+  // result; oracle.* -> { hit: boolean }; session.stop -> {}.
   result?: unknown;
   error?: string;
 }
