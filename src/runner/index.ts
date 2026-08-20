@@ -1,5 +1,5 @@
 export { attachClient } from './mcp-client.js';
-export { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit, installTarget, extractNpxPackageSpec, PROFILE_COMPOSE_FILES } from './sandbox-runner.js';
+export { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit, installTarget, extractNpxPackageSpec, PROFILE_COMPOSE_FILES, deriveCgnatAddressing } from './sandbox-runner.js';
 export type { Profile, McpClient } from './types.js';
 export { runWsRunner } from './ws-runner.js';
 export type { RunOptions } from './ws-runner.js';

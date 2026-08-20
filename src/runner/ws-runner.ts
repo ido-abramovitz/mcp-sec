@@ -1,7 +1,7 @@
 import { WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit, installTarget, extractNpxPackageSpec } from './sandbox-runner.js';
+import { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit, installTarget, extractNpxPackageSpec, deriveCgnatAddressing } from './sandbox-runner.js';
 import { attachClient } from './mcp-client.js';
 import type { McpClient } from './types.js';
 import type { RunnerCommand, RunnerReply } from './protocol.js';
@@ -68,7 +68,16 @@ export function runWsRunner({ url, sandboxDir, apiKey, cmd: targetCmd, env: targ
             const client = attachClient(proc, { callTimeoutMs: cmd.callTimeoutMs });
             const sessionId = randomUUID();
             sessions.set(sessionId, { proc, client, sandboxDir, profile: cmd.profile });
-            reply({ kind: 'reply', id: cmd.id, ok: true, result: { sessionId } });
+            // The backend builds checks/ssrf.ts's IP-literal payloads and
+            // has no other way to learn this runner's own sandboxDir (kept
+            // local, never sent over the wire) -- without relaying the
+            // derived address back, those payloads would target a stale
+            // default that doesn't match this runner's actual cgnat-net
+            // subnet and silently go inconclusive instead of proving
+            // anything (same class of bug as #171, just at the wire
+            // boundary instead of two local jobs on one machine).
+            const { listenerIp } = deriveCgnatAddressing(sandboxDir);
+            reply({ kind: 'reply', id: cmd.id, ok: true, result: { sessionId, cgnatListenerIp: listenerIp } });
             break;
           }
           case 'rpc': {
