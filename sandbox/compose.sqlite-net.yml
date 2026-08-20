@@ -26,7 +26,7 @@ services:
       - sqlite-net
       - cgnat-net
     dns:
-      - 100.64.55.10
+      - ${CGNAT_LISTENER_IP:-100.64.55.10}
     cap_drop:
       - ALL
     security_opt:
@@ -43,7 +43,9 @@ services:
     networks:
       sqlite-net: {}
       cgnat-net:
-        ipv4_address: 100.64.55.10
+        ipv4_address: ${CGNAT_LISTENER_IP:-100.64.55.10}
+    environment:
+      CGNAT_LISTENER_IP: ${CGNAT_LISTENER_IP:-100.64.55.10}
     volumes:
       - ./canary-hits:/var/log/canary-hits
 
@@ -54,4 +56,4 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: 100.64.55.0/24
+        - subnet: ${CGNAT_SUBNET:-100.64.55.0/24}
