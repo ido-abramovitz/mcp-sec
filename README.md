@@ -46,12 +46,14 @@ configuration and resolves unpinned npm commands from that repository's
 configuration.
 
 ```bash
-npx mcp-sec-cli repo
+MCP_SEC_API_KEY=mcpsec_live_... npx mcp-sec-cli repo
 ```
 
 The free check returns current exact-version runtime evidence, catalog links,
 and potential cross-MCP capability paths for up to 50 MCP packages. It does not
 upload source code, config contents, paths, environment variables, or secrets.
+The API token is sent as a bearer credential and is never written into the
+repository. It can also be provided once with `--api-key` for ephemeral use.
 Use `--json` for machine-readable output and
 `--fail-on=vulnerable,unknown` for a non-zero exit code.
 
