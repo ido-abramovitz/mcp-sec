@@ -15,6 +15,36 @@ export interface CheckResult {
   message?: string;
 }
 
+export interface RepositoryRiskInstallation {
+  channel: string;
+  identifier: string;
+  version: string;
+  status: 'vulnerable' | 'verified_clean' | 'pending_scan' | 'scan_unavailable' | 'untracked';
+  provenFindings: number;
+  confirmedVulnerabilities: number;
+  scanFinishedAt: string | null;
+  catalogUrl: string | null;
+}
+
+export interface RepositoryRiskResult {
+  generatedAt: string;
+  installations: RepositoryRiskInstallation[];
+  summary: Record<RepositoryRiskInstallation['status'], number>;
+  crossMcp: {
+    chains: Array<{
+      title: string;
+      severity: 'critical' | 'high';
+      source: {component:{name:string;identifier:string;version:string};tool:{name:string}};
+      sink: {component:{name:string;identifier:string;version:string};tool:{name:string}};
+      explanation: string;
+      precondition: string;
+    }>;
+    missingCoordinates: Array<{channel:string;identifier:string;version:string}>;
+    disclaimer: string;
+  };
+  bounded: {maximumInstallations:number;analyzedInstallations:number};
+}
+
 export async function checkPackage(name: string, version: string | null): Promise<CheckResult> {
   const url = new URL('/v1/check', API_BASE);
   url.searchParams.set('name', name);
@@ -25,4 +55,17 @@ export async function checkPackage(name: string, version: string | null): Promis
     throw new Error(`API request failed (${res.status}): ${await res.text()}`);
   }
   return (await res.json()) as CheckResult;
+}
+
+export async function checkRepository(
+  installations: Array<{channel:string;identifier:string;version:string}>,
+): Promise<RepositoryRiskResult> {
+  const url = new URL('/v1/repository-risk', API_BASE);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {'content-type':'application/json'},
+    body: JSON.stringify({installations}),
+  });
+  if (!res.ok) throw new Error(`API request failed (${res.status}): ${await res.text()}`);
+  return (await res.json()) as RepositoryRiskResult;
 }
