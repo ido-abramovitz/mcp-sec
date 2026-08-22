@@ -17,11 +17,16 @@ test('submits only exact MCP coordinates to the bounded repository endpoint', as
     }), {status:200,headers:{'content-type':'application/json'}});
   }) as typeof fetch;
   try {
-    await checkRepository([{channel:'npm',identifier:'example-mcp',version:'1.2.3'}]);
+    await checkRepository([{channel:'npm',identifier:'example-mcp',version:'1.2.3'}],'mcpsec_live_test');
     assert.match(requestUrl, /\/v1\/repository-risk$/);
     assert.equal(requestInit?.method, 'POST');
+    assert.equal((requestInit?.headers as Record<string,string>).authorization,'Bearer mcpsec_live_test');
     assert.deepEqual(JSON.parse(String(requestInit?.body)), {installations:[{channel:'npm',identifier:'example-mcp',version:'1.2.3'}]});
   } finally {
     globalThis.fetch = previousFetch;
   }
+});
+
+test('requires an API token before sending repository metadata', async () => {
+  await assert.rejects(()=>checkRepository([{channel:'npm',identifier:'example-mcp',version:'1.2.3'}],''),/MCP_SEC_API_KEY is required/);
 });

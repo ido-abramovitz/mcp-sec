@@ -59,11 +59,13 @@ export async function checkPackage(name: string, version: string | null): Promis
 
 export async function checkRepository(
   installations: Array<{channel:string;identifier:string;version:string}>,
+  apiKey = process.env.MCP_SEC_API_KEY,
 ): Promise<RepositoryRiskResult> {
+  if (!apiKey) throw new Error('MCP_SEC_API_KEY is required. Set it in the environment or pass --api-key.');
   const url = new URL('/v1/repository-risk', API_BASE);
   const res = await fetch(url, {
     method: 'POST',
-    headers: {'content-type':'application/json'},
+    headers: {'content-type':'application/json','authorization':`Bearer ${apiKey}`},
     body: JSON.stringify({installations}),
   });
   if (!res.ok) throw new Error(`API request failed (${res.status}): ${await res.text()}`);

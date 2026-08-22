@@ -105,9 +105,11 @@ function repositoryExitCode(result: RepositoryRiskResult, failOn: string | null)
 async function runRepositoryCheck(argv: string[], failOn: string | null): Promise<void> {
   let directory = process.cwd();
   let json = false;
+  let apiKey: string|undefined;
   for (let index=0;index<argv.length;index++) {
     if (argv[index] === '--dir' && argv[index + 1]) directory = argv[++index]!;
     else if (argv[index] === '--json') json = true;
+    else if (argv[index] === '--api-key' && argv[index + 1]) apiKey = argv[++index]!;
   }
   const inventory = discoverRepositoryInventory(directory);
   if (!inventory.installations.length) {
@@ -119,7 +121,7 @@ async function runRepositoryCheck(argv: string[], failOn: string | null): Promis
     process.exitCode = inventory.unresolved.length && failOn?.split(',').includes('unknown') ? 1 : 0;
     return;
   }
-  const result = await checkRepository(inventory.installations.map(({channel,identifier,version})=>({channel,identifier,version})));
+  const result = await checkRepository(inventory.installations.map(({channel,identifier,version})=>({channel,identifier,version})),apiKey);
   if (json) {
     console.log(JSON.stringify({repository:inventory.root,unresolved:inventory.unresolved,...result}, null, 2));
   } else {
