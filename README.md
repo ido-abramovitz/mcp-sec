@@ -39,6 +39,22 @@ npm install -g mcp-sec-cli
 
 ## Usage
 
+Check the exact MCP versions declared by one repository. This command reads
+only repository-local `.mcp.json`, `.cursor/mcp.json`, or `.vscode/mcp.json`
+configuration and resolves unpinned npm commands from that repository's
+`package-lock.json`. It does not inspect other repositories or user-global MCP
+configuration.
+
+```bash
+npx mcp-sec-cli repo
+```
+
+The free check returns current exact-version runtime evidence, catalog links,
+and potential cross-MCP capability paths for up to 50 MCP packages. It does not
+upload source code, config contents, paths, environment variables, or secrets.
+Use `--json` for machine-readable output and
+`--fail-on=vulnerable,unknown` for a non-zero exit code.
+
 ```bash
 mcp-sec check <name>@<version>
 ```
