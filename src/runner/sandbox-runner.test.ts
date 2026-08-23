@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveCgnatAddressing } from './sandbox-runner.ts';
+import { deriveCgnatAddressing, supportServiceDownArgs } from './sandbox-runner.ts';
 
 // #171: cgnat-net's subnet/listener IP used to be hardcoded identically
 // across every job, so two concurrent postgres-net/mysql-net/sqlite-net
@@ -35,4 +35,11 @@ test('stays within the RFC 6598 CGNAT range (100.64.0.0/10)', () => {
 test('listenerIp is always the .10 host within its own derived subnet', () => {
   const { subnet, listenerIp } = deriveCgnatAddressing('/tmp/some-job');
   assert.equal(listenerIp, subnet.replace(/\.0\/24$/, '.10'));
+});
+
+test('support-service teardown removes ephemeral anonymous volumes', () => {
+  assert.deepEqual(
+    supportServiceDownArgs('compose.postgres-net.yml'),
+    ['compose', '-f', 'compose.postgres-net.yml', 'down', '--volumes', '--remove-orphans'],
+  );
 });
