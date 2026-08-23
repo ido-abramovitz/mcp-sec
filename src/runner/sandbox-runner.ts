@@ -97,11 +97,20 @@ function startSupportServices({ sandboxDir, profile }: { sandboxDir: string; pro
   }
 }
 
+function supportServiceDownArgs(composeFile: string): string[] {
+  // postgres/mysql/qdrant images declare anonymous data volumes. Removing
+  // only their containers leaves those volumes detached and invisible to a
+  // later compose-down call. Production accumulated thousands of them until
+  // the scanner host reached 99% disk usage. Teardown owns these throwaway
+  // support services, so it must also own deletion of their ephemeral data.
+  return ['compose', '-f', composeFile, 'down', '--volumes', '--remove-orphans'];
+}
+
 function stopSupportServices({ sandboxDir, profile }: { sandboxDir: string; profile: Profile }) {
   const composeFile = PROFILE_COMPOSE_FILES[profile];
   const services = PROFILE_SUPPORT_SERVICES[profile] || [];
   if (services.length === 0) return;
-  spawnSync('docker', ['compose', '-f', composeFile, 'down', '--remove-orphans'], { cwd: sandboxDir, stdio: 'ignore' });
+  spawnSync('docker', supportServiceDownArgs(composeFile), { cwd: sandboxDir, stdio: 'ignore' });
 }
 
 interface StartTargetArgs {
@@ -186,7 +195,7 @@ function installTarget({ sandboxDir, packageSpec }: { sandboxDir: string; packag
   // project (compose.install.yml), so it only ever cleans up this
   // install's own container, never another profile's.
   if (result.signal || result.error?.message?.includes('ETIMEDOUT')) {
-    spawnSync('docker', ['compose', '-f', 'compose.install.yml', 'down', '--remove-orphans'], { cwd: sandboxDir });
+    spawnSync('docker', ['compose', '-f', 'compose.install.yml', 'down', '--volumes', '--remove-orphans'], { cwd: sandboxDir });
     return { ok: false, error: `install timed out after ${INSTALL_TIMEOUT_MS}ms (packageSpec=${packageSpec})` };
   }
   if (result.status !== 0) {
@@ -228,5 +237,5 @@ function dropHit(sandboxDir: string, token: string): boolean {
   return true;
 }
 
-export { startTarget, startSupportServices, stopSupportServices, listenerLog, dropHit, installTarget, extractNpxPackageSpec, PROFILE_COMPOSE_FILES, deriveCgnatAddressing };
+export { startTarget, startSupportServices, stopSupportServices, supportServiceDownArgs, listenerLog, dropHit, installTarget, extractNpxPackageSpec, PROFILE_COMPOSE_FILES, deriveCgnatAddressing };
 export type { Profile };

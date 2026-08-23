@@ -27,7 +27,7 @@
     "dev": "node --experimental-strip-types src/cli.ts",
     "test": "node --experimental-strip-types --test src/*.test.ts src/**/*.test.ts",
     "sandbox:build": "cd sandbox && docker compose -f compose.airgapped.yml build && docker compose -f compose.canary-net.yml build",
-    "sandbox:clean": "cd sandbox && docker compose -f compose.airgapped.yml down --remove-orphans && docker compose -f compose.canary-net.yml down --remove-orphans"
+    "sandbox:clean": "cd sandbox && docker compose -f compose.airgapped.yml down --volumes --remove-orphans && docker compose -f compose.canary-net.yml down --volumes --remove-orphans"
   },
   "dependencies": {
     "ws": "^8.18.0",
