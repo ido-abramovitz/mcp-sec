@@ -17,3 +17,20 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
+
+  # The sandbox image build itself is the primary validation of the trixie
+  # apt package names (libicu76 / libssl3t64) -- a wrong name fails the build.
+  # Then assert the whole point of the bump: the system Python is >= 3.13.
+  sandbox-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the sandbox image
+        run: docker build -t mcp-sec-sandbox:ci sandbox
+      - name: Assert Python >= 3.13
+        run: |
+          set -euo pipefail
+          version="$(docker run --rm mcp-sec-sandbox:ci python3 --version)"
+          echo "sandbox python: $version"
+          echo "$version" | grep -qE 'Python 3\.(1[3-9]|[2-9][0-9])' \
+            || { echo "expected Python >= 3.13, got: $version"; exit 1; }
