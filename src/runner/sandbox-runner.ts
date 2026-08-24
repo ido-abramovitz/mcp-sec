@@ -121,7 +121,38 @@ interface StartTargetArgs {
   runTimeoutMs?: number;
 }
 
-function startTarget({ sandboxDir, profile, cmd, env = {}, runTimeoutMs }: StartTargetArgs): { proc: ChildProcessWithoutNullStreams; wasKilledByWatchdog: () => boolean } {
+// A target that exits before answering the MCP handshake usually explains
+// itself on STDERR (a usage message, a missing-config error, a stack trace)
+// -- but that channel used to be discarded (stdio slot 'ignore'), leaving
+// every "exited before replying" failure a black box (see mcp-security#279).
+// We now pipe stderr and keep a bounded tail of it. stderr is a SEPARATE
+// stream from stdout, so this never contaminates the MCP JSON-RPC the client
+// reads off stdout. 32 KiB is enough to hold the tail end of a usage dump or
+// stack trace without letting a chatty server balloon memory.
+const MAX_STDERR_TAIL_BYTES = 32 * 1024;
+
+// Bounded stderr-tail accumulator: holds recent chunks and trims from the
+// front once buffered bytes exceed ~2x the cap, so memory stays bounded and
+// the newest (most diagnostic) output always survives; the exact last
+// `maxBytes` are sliced only when read. Extracted so the bounding contract is
+// unit-testable without spawning a container.
+export function createStderrTail(maxBytes: number): { push: (chunk: Buffer) => void; read: () => string } {
+  const chunks: Buffer[] = [];
+  let bufferedBytes = 0;
+  return {
+    push(chunk: Buffer) {
+      chunks.push(chunk);
+      bufferedBytes += chunk.length;
+      while (bufferedBytes > maxBytes * 2 && chunks.length > 1) bufferedBytes -= chunks.shift()!.length;
+    },
+    read() {
+      const buf = Buffer.concat(chunks);
+      return buf.subarray(Math.max(0, buf.length - maxBytes)).toString('utf8');
+    },
+  };
+}
+
+function startTarget({ sandboxDir, profile, cmd, env = {}, runTimeoutMs }: StartTargetArgs): { proc: ChildProcessWithoutNullStreams; wasKilledByWatchdog: () => boolean; stderrTail: () => string } {
   const composeFile = PROFILE_COMPOSE_FILES[profile];
   if (!composeFile) throw new Error(`unknown sandbox profile: ${profile}`);
 
@@ -136,10 +167,18 @@ function startTarget({ sandboxDir, profile, cmd, env = {}, runTimeoutMs }: Start
   const envArgs = Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
   const args = ['compose', '-f', composeFile, 'run', '--rm', '-T', ...envArgs, 'target', 'sh', '-c', cmd];
 
-  // stdio's third slot ('ignore') means the real return type has stderr:
-  // null (ChildProcessByStdio<Writable, Readable, null>) -- consuming code
-  // only ever touches stdout/stdin/kill(), never stderr.
-  const proc = spawn('docker', args, { cwd: sandboxDir, stdio: ['pipe', 'pipe', 'ignore'] }) as unknown as ChildProcessWithoutNullStreams;
+  // stdio slot 3 is 'pipe' (was 'ignore') so we can capture the target's
+  // stderr; the data listener below drains it continuously, so the pipe
+  // never fills and blocks the child.
+  const proc = spawn('docker', args, { cwd: sandboxDir, stdio: ['pipe', 'pipe', 'pipe'] }) as unknown as ChildProcessWithoutNullStreams;
+
+  const stderr = createStderrTail(MAX_STDERR_TAIL_BYTES);
+  if (proc.stderr) {
+    proc.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+    // Best-effort diagnostics only -- a stderr stream error must never crash
+    // the scan (mirrors mcp-client.ts's own defensive stdin/stdout handling).
+    proc.stderr.on('error', () => {});
+  }
 
   let killedByWatchdog = false;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
@@ -151,7 +190,7 @@ function startTarget({ sandboxDir, profile, cmd, env = {}, runTimeoutMs }: Start
     proc.once('exit', () => clearTimeout(watchdog));
   }
 
-  return { proc, wasKilledByWatchdog: () => killedByWatchdog };
+  return { proc, wasKilledByWatchdog: () => killedByWatchdog, stderrTail: () => stderr.read() };
 }
 
 // The out-of-band oracle for canary-net checks (ssrf, exfiltration): does
