@@ -125,24 +125,32 @@ interface StartTargetArgs {
 // itself on STDERR (a usage message, a missing-config error, a stack trace)
 // -- but that channel used to be discarded (stdio slot 'ignore'), leaving
 // every "exited before replying" failure a black box (see mcp-security#279).
-// We now pipe stderr and keep a bounded tail of it. stderr is a SEPARATE
-// stream from stdout, so this never contaminates the MCP JSON-RPC the client
-// reads off stdout. 32 KiB is enough to hold the tail end of a usage dump or
-// stack trace without letting a chatty server balloon memory.
+// We pipe BOTH stderr and stdout and keep a bounded tail of each, capped at
+// 32 KiB. stderr holds usage dumps / stack traces. stdout normally carries the
+// MCP JSON-RPC, but a target that never speaks MCP often prints a human banner
+// or a "listening on http://..." line to stdout and exits -- the single
+// strongest signal for the HTTP-only and wrong-entrypoint buckets. Teeing a
+// tail off stdout is safe: attachClient (mcp-client.ts) adds its own 'data'
+// listener, and Node delivers every chunk to ALL listeners, so the tee never
+// steals bytes from the JSON-RPC parser.
 const MAX_STDERR_TAIL_BYTES = 32 * 1024;
+const MAX_STDOUT_TAIL_BYTES = 32 * 1024;
 
-// Bounded stderr-tail accumulator: holds recent chunks and trims from the
+// Bounded stream-tail accumulator: holds recent chunks and trims from the
 // front once buffered bytes exceed ~2x the cap, so memory stays bounded and
 // the newest (most diagnostic) output always survives; the exact last
-// `maxBytes` are sliced only when read. Extracted so the bounding contract is
-// unit-testable without spawning a container.
-export function createStderrTail(maxBytes: number): { push: (chunk: Buffer) => void; read: () => string } {
+// `maxBytes` are sliced only when read. Accepts Buffer OR string chunks --
+// stderr arrives as Buffers, but stdout arrives as utf8 strings once
+// attachClient calls setEncoding('utf8') on the shared stream. Extracted so
+// the bounding contract is unit-testable without spawning a container.
+export function createStreamTail(maxBytes: number): { push: (chunk: Buffer | string) => void; read: () => string } {
   const chunks: Buffer[] = [];
   let bufferedBytes = 0;
   return {
-    push(chunk: Buffer) {
-      chunks.push(chunk);
-      bufferedBytes += chunk.length;
+    push(chunk: Buffer | string) {
+      const buf = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+      chunks.push(buf);
+      bufferedBytes += buf.length;
       while (bufferedBytes > maxBytes * 2 && chunks.length > 1) bufferedBytes -= chunks.shift()!.length;
     },
     read() {
@@ -152,7 +160,13 @@ export function createStderrTail(maxBytes: number): { push: (chunk: Buffer) => v
   };
 }
 
-function startTarget({ sandboxDir, profile, cmd, env = {}, runTimeoutMs }: StartTargetArgs): { proc: ChildProcessWithoutNullStreams; wasKilledByWatchdog: () => boolean; stderrTail: () => string } {
+function startTarget({ sandboxDir, profile, cmd, env = {}, runTimeoutMs }: StartTargetArgs): {
+  proc: ChildProcessWithoutNullStreams;
+  wasKilledByWatchdog: () => boolean;
+  stderrTail: () => string;
+  stdoutTail: () => string;
+  exitInfo: () => { code: number | null; signal: NodeJS.Signals | null; killedByWatchdog: boolean };
+} {
   const composeFile = PROFILE_COMPOSE_FILES[profile];
   if (!composeFile) throw new Error(`unknown sandbox profile: ${profile}`);
 
@@ -172,13 +186,31 @@ function startTarget({ sandboxDir, profile, cmd, env = {}, runTimeoutMs }: Start
   // never fills and blocks the child.
   const proc = spawn('docker', args, { cwd: sandboxDir, stdio: ['pipe', 'pipe', 'pipe'] }) as unknown as ChildProcessWithoutNullStreams;
 
-  const stderr = createStderrTail(MAX_STDERR_TAIL_BYTES);
+  const stderr = createStreamTail(MAX_STDERR_TAIL_BYTES);
   if (proc.stderr) {
     proc.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
     // Best-effort diagnostics only -- a stderr stream error must never crash
     // the scan (mirrors mcp-client.ts's own defensive stdin/stdout handling).
     proc.stderr.on('error', () => {});
   }
+
+  // Tee a bounded tail off stdout too. attachClient attaches its own parser
+  // listener later (synchronously, before any data flows), so this is purely
+  // additive -- both listeners see every chunk. Chunks arrive as utf8 strings
+  // once attachClient sets the encoding; createStreamTail handles either.
+  const stdout = createStreamTail(MAX_STDOUT_TAIL_BYTES);
+  if (proc.stdout) {
+    proc.stdout.on('data', (chunk: Buffer | string) => stdout.push(chunk));
+    proc.stdout.on('error', () => {});
+  }
+
+  // Record why the target died, for per-attempt diagnostic classification: a
+  // clean non-zero exit vs. a signal (OOM/segfault) vs. our own watchdog kill
+  // are different failure modes that the raw stderr tail alone can't always
+  // distinguish.
+  let exitCode: number | null = null;
+  let exitSignal: NodeJS.Signals | null = null;
+  proc.once('exit', (code, signal) => { exitCode = code; exitSignal = signal; });
 
   let killedByWatchdog = false;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
@@ -190,7 +222,13 @@ function startTarget({ sandboxDir, profile, cmd, env = {}, runTimeoutMs }: Start
     proc.once('exit', () => clearTimeout(watchdog));
   }
 
-  return { proc, wasKilledByWatchdog: () => killedByWatchdog, stderrTail: () => stderr.read() };
+  return {
+    proc,
+    wasKilledByWatchdog: () => killedByWatchdog,
+    stderrTail: () => stderr.read(),
+    stdoutTail: () => stdout.read(),
+    exitInfo: () => ({ code: exitCode, signal: exitSignal, killedByWatchdog }),
+  };
 }
 
 // The out-of-band oracle for canary-net checks (ssrf, exfiltration): does

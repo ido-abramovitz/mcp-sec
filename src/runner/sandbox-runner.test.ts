@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveCgnatAddressing, supportServiceDownArgs, createStderrTail } from './sandbox-runner.ts';
+import { deriveCgnatAddressing, supportServiceDownArgs, createStreamTail } from './sandbox-runner.ts';
 
 // #171: cgnat-net's subnet/listener IP used to be hardcoded identically
 // across every job, so two concurrent postgres-net/mysql-net/sqlite-net
@@ -45,19 +45,19 @@ test('support-service teardown removes ephemeral anonymous volumes', () => {
 });
 
 // #279 M1.5: the sandbox now captures a bounded tail of the target's stderr
-// so an "exited before replying" failure is no longer a black box. The
-// accumulator keeps the NEWEST bytes (the usage/error the target printed
-// right before dying) and stays memory-bounded regardless of volume.
-test('createStderrTail returns everything while under the cap', () => {
-  const t = createStderrTail(1024);
+// AND stdout so an "exited before replying" failure is no longer a black box.
+// The accumulator keeps the NEWEST bytes (the usage/error/banner the target
+// printed right before dying) and stays memory-bounded regardless of volume.
+test('createStreamTail returns everything while under the cap', () => {
+  const t = createStreamTail(1024);
   assert.equal(t.read(), '');
   t.push(Buffer.from('usage: server <stdio>\n'));
   t.push(Buffer.from('missing MCP_TOKEN\n'));
   assert.equal(t.read(), 'usage: server <stdio>\nmissing MCP_TOKEN\n');
 });
 
-test('createStderrTail keeps only the last maxBytes, preserving the newest output', () => {
-  const t = createStderrTail(10);
+test('createStreamTail keeps only the last maxBytes, preserving the newest output', () => {
+  const t = createStreamTail(10);
   for (let i = 0; i < 100; i++) t.push(Buffer.from(`line${i}\n`));
   const tail = t.read();
   assert.equal(Buffer.byteLength(tail), 10, 'tail is capped to maxBytes');
@@ -65,8 +65,22 @@ test('createStderrTail keeps only the last maxBytes, preserving the newest outpu
   assert.ok(!t.read().includes('line0\n'), 'oldest output is dropped');
 });
 
-test('createStderrTail stays memory-bounded across many chunks', () => {
-  const t = createStderrTail(8);
+test('createStreamTail stays memory-bounded across many chunks', () => {
+  const t = createStreamTail(8);
   for (let i = 0; i < 10000; i++) t.push(Buffer.from('x'.repeat(64)));
   assert.equal(t.read(), 'x'.repeat(8));
+});
+
+// stdout chunks arrive as utf8 STRINGS (attachClient sets the encoding), not
+// Buffers -- the tail must accept both and still bound by byte length.
+test('createStreamTail accepts string chunks and bounds by bytes, not chars', () => {
+  const t = createStreamTail(1024);
+  t.push('listening on http://0.0.0.0:8080\n'); // string, not Buffer
+  t.push('server ready\n');
+  assert.equal(t.read(), 'listening on http://0.0.0.0:8080\nserver ready\n');
+
+  const capped = createStreamTail(6);
+  for (let i = 0; i < 50; i++) capped.push(`row${i}\n`); // string chunks
+  assert.equal(Buffer.byteLength(capped.read()), 6, 'byte-bounded regardless of chunk type');
+  assert.ok(capped.read().endsWith('row49\n'));
 });
