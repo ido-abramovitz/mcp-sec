@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useId, useRef, useState } from "react";
+import { trackEvent } from "./analytics";
 
 const OPEN_CONTACT_FORM = "open-contact-form";
 type Status = "idle" | "sending" | "sent" | "error";
@@ -19,10 +20,12 @@ export function ContactDialog() {
   useEffect(() => {
     const open = (event: Event) => {
       const detail = (event as CustomEvent<string>).detail;
-      setSource(detail || "Website contact");
+      const eventSource = detail || "Website contact";
+      setSource(eventSource);
       setStatus("idle");
       setError("");
       dialogRef.current?.showModal();
+      trackEvent("generate_lead_start", { source: eventSource, page_path: window.location.pathname });
     };
     window.addEventListener(OPEN_CONTACT_FORM, open);
     return () => window.removeEventListener(OPEN_CONTACT_FORM, open);
@@ -47,9 +50,11 @@ export function ContactDialog() {
       if (!response.ok) throw new Error(result.error || "We could not send your request.");
       form.reset();
       setStatus("sent");
+      trackEvent("generate_lead", { source, page_path: window.location.pathname });
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : "We could not send your request.");
       setStatus("error");
+      trackEvent("generate_lead_error", { source, page_path: window.location.pathname });
     }
   }
 

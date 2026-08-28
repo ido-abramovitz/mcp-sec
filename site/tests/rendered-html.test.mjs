@@ -60,8 +60,8 @@ test("uses native anchors for reliable internal navigation", async () => {
   }
 
   const home = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(home, /<a className="button" href="\/assessments">/);
-  assert.match(home, /<a className="button ghost" href="\/enterprise">/);
+  assert.match(home, /<a className="button" href="\/assessments"[^>]*>/);
+  assert.match(home, /<a className="button ghost" href="\/enterprise"[^>]*>/);
 });
 
 test("renders one shared contact form and validates required fields", async () => {
@@ -85,6 +85,22 @@ test("keeps static pages free of contact hydration and remote font CSS", async (
 
   const assessment = await render("/assessments");
   assert.match(await assessment.text(), /CONTACT MCPSECURITY\.CLOUD/);
+});
+
+test("tracks conversions without collecting form or search contents", async () => {
+  const analytics = await readFile(new URL("../app/analytics-tracker.tsx", import.meta.url), "utf8");
+  const contact = await readFile(new URL("../app/contact-form.tsx", import.meta.url), "utf8");
+  const catalog = await readFile(new URL("../app/catalog/page.tsx", import.meta.url), "utf8");
+  const home = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(contact, /trackEvent\("generate_lead"/);
+  assert.match(contact, /trackEvent\("generate_lead_start"/);
+  assert.match(catalog, /trackEvent\("catalog_search"/);
+  assert.doesNotMatch(catalog, /trackEvent\("catalog_search",\{[^}]*query:/);
+  assert.match(analytics, /"outbound_click"/);
+  assert.match(analytics, /"scanner_command_copy"/);
+  assert.match(home, /data-analytics-event="assessment_cta_click"/);
+  assert.match(home, /data-analytics-event="scanner_cta_click"/);
 });
 
 async function renderRequest(pathname, init) {

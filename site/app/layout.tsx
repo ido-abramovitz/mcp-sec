@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AnalyticsTracker } from "./analytics-tracker";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://mcpsecurity.cloud"),
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body>
         {children}
+        {gaId ? <AnalyticsTracker /> : null}
         {gaId ? (
           <>
             <script async src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`} />
