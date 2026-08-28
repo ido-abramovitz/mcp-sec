@@ -63,3 +63,23 @@ test("uses native anchors for reliable internal navigation", async () => {
   assert.match(home, /<a className="button" href="\/assessments">/);
   assert.match(home, /<a className="button ghost" href="\/enterprise">/);
 });
+
+test("renders one shared contact form and validates required fields", async () => {
+  const assessment = await render("/assessments");
+  const html = await assessment.text();
+  assert.match(html, /Work email/);
+  assert.match(html, /Company/);
+  assert.match(html, /Message/);
+  assert.doesNotMatch(html, /mailto:/i);
+
+  const invalid = await renderRequest("/api/contact", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Only a name" }) });
+  assert.equal(invalid.status, 400);
+  assert.deepEqual(await invalid.json(), { error: "Please complete all required fields." });
+});
+
+async function renderRequest(pathname, init) {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}-${pathname}`);
+  const { default: worker } = await import(workerUrl.href);
+  return worker.fetch(new Request(`http://localhost${pathname}`, init), { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } }, { waitUntil() {}, passThroughOnException() {} });
+}
