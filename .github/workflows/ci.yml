@@ -18,6 +18,22 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
 
+  site:
+    name: site
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - run: npm test
+
   # The sandbox image build itself is the primary validation of the trixie
   # apt package names (libicu76 / libssl3t64) -- a wrong name fails the build.
   # Then assert the whole point of the bump: the system Python is >= 3.13.
