@@ -77,6 +77,16 @@ test("renders one shared contact form and validates required fields", async () =
   assert.deepEqual(await invalid.json(), { error: "Please complete all required fields." });
 });
 
+test("keeps static pages free of contact hydration and remote font CSS", async () => {
+  const home = await render("/");
+  const html = await home.text();
+  assert.doesNotMatch(html, /CONTACT MCPSECURITY\.CLOUD/);
+  assert.doesNotMatch(html, /fonts\.googleapis\.com/);
+
+  const assessment = await render("/assessments");
+  assert.match(await assessment.text(), /CONTACT MCPSECURITY\.CLOUD/);
+});
+
 async function renderRequest(pathname, init) {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}-${pathname}`);
