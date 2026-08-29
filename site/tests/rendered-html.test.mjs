@@ -64,6 +64,14 @@ test("uses native anchors for reliable internal navigation", async () => {
   assert.match(home, /<a className="button ghost" href="\/enterprise"[^>]*>/);
 });
 
+test("keeps navigation columns fixed between routes", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.nav\{[^}]*display:grid/);
+  assert.match(css, /grid-template-columns:minmax\(0,250px\) minmax\(0,1fr\) minmax\(0,250px\)/);
+  assert.match(css, /\.nav-links\{[^}]*justify-self:center/);
+  assert.match(css, /\.nav>\.button\{justify-self:end/);
+});
+
 test("renders one shared contact form and validates required fields", async () => {
   const assessment = await render("/assessments");
   const html = await assessment.text();
