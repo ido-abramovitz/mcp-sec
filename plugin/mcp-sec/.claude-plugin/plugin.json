@@ -5,7 +5,7 @@
   "author": {
     "name": "mcp-sec"
   },
-  "homepage": "https://github.com/ido-abramovitz/mcp-sec",
+  "homepage": "https://mcpsecurity.cloud/scanner",
   "license": "Apache-2.0",
   "keywords": ["mcp", "security", "model-context-protocol", "vulnerability-scanner"]
 }

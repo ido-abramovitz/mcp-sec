@@ -2,6 +2,8 @@
 
 Stay safe as your locally-installed MCP servers keep changing.
 
+**[Scan your MCP configuration and check exact-version risk →](https://mcpsecurity.cloud/scanner)**
+
 Almost every MCP server is installed via `npx package@latest` -- meaning
 the exact code running on your machine can silently change on every
 restart, with no version pin and no review. A server that was safe last
